@@ -14,4 +14,9 @@ public class Symbol {
         this.type = type;
         this.line = line;
     }
+
+    public String name() {return this.name;}
+    public Kind kind() {return this.kind;}
+    public String type() {return this.type;}
+    public int line() {return this.line;}
 }

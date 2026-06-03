@@ -38,6 +38,12 @@ public class Resolver {
     }
 
     public void resolveProgram(List<Decl> decls) {
+        // Built-in functions
+        current.define(new Symbol("print_int", Symbol.Kind.FUNCTION, "void", -1));
+        current.define(new Symbol("print_float", Symbol.Kind.FUNCTION, "void", -1));
+        current.define(new Symbol("print_bool", Symbol.Kind.FUNCTION, "void", -1));
+        current.define(new Symbol("print_str", Symbol.Kind.FUNCTION, "void", -1));
+
         // First pass register all function names so they can call each other
         for (Decl decl : decls) {
             if (decl instanceof Decl.Function fn) {
