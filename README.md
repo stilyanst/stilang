@@ -54,4 +54,4 @@ Each stage is implemented independently and communicates through well-defined da
 
 ## Documentation
 
-See [DOCS.md](DOCS.md) for the full language reference.
+See [DOCS.md](doc/DOCS.md) for the full language reference.
