@@ -4,7 +4,8 @@ import java.util.List;
 
 public sealed interface Expr permits
     Expr.Literal, Expr.Ident, Expr.Binary,
-    Expr.Unary, Expr.Call, Expr.Assign {
+    Expr.Unary, Expr.Call, Expr.Assign, Expr.ArrayLiteral,
+    Expr.Index {
 
     // It is Interger, Double, String, Boolean
     record Literal(Object value, int line) implements Expr {}
@@ -18,4 +19,8 @@ public sealed interface Expr permits
     record Call(Expr callee, List<Expr> args, int line) implements Expr {}
 
     record Assign(String name, Expr value, int line) implements Expr {}
+    
+    record ArrayLiteral(List<Expr> elements, int line) implements Expr {}
+
+    record Index(Expr array, Expr index, int line) implements Expr {}
 }

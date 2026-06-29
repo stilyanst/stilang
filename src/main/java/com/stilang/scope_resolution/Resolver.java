@@ -131,6 +131,13 @@ public class Resolver {
                 resolutions.put(e, s);
             }
             case Expr.Call e -> { resolveExpr(e.callee()); e.args().forEach(this::resolveExpr); }
+            case Expr.ArrayLiteral e -> {
+                for (Expr el : e.elements()) resolveExpr(el);
+            }
+            case Expr.Index e -> {
+                resolveExpr(e.array());
+                resolveExpr(e.index());
+}
         }
     }
 }

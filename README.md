@@ -10,7 +10,8 @@ Source files (`.stil`) compile to C, which is then compiled to a native binary v
 - Functions, recursion, and nested calls
 - `if`/`else`, `while` loops
 - `int`, `float`, `bool`, `str` primitives
-- Built-in print functions for all types
+- Arrays with element access and iteration
+- Built-in print functions for all primitive types
 - Clear compile-time error messages with line numbers
 - Single self-contained jar - runs anywhere Java is installed
 
@@ -32,14 +33,19 @@ The compiler extracts `runtime.c` automatically and prints the exact gcc command
 ## Example
 
 ```
-fn fib(n: int) -> int {
-    if (n <= 1) { return n; }
-    return fib(n - 1) + fib(n - 2);
+fn sum(arr: int[], len: int) -> int {
+    let total: int = 0;
+    let i: int = 0;
+    while (i < len) {
+        total = total + arr[i];
+        i = i + 1;
+    }
+    return total;
 }
 
 fn main() -> int {
-    let result: int = fib(10);
-    print_int(result);   // 55
+    let nums: int[] = [10, 20, 30, 40, 50];
+    print_int(sum(nums, 5));   // 150
     return 0;
 }
 ```

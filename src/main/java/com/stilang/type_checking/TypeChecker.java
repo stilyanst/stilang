@@ -228,6 +228,29 @@ public class TypeChecker {
             case Expr.Unary e -> checkUnary(e);
             case Expr.Assign e -> checkAssign(e);
             case Expr.Call e -> checkCall(e);
+            case Expr.ArrayLiteral e -> {
+                if (e.elements().isEmpty())
+                    throw new TypeException("cannot infer type of empty array literal", e.line());
+                Type elemType = checkExpr(e.elements().get(0));
+                for (int i = 1; i < e.elements().size(); i++) {
+                    Type t = checkExpr(e.elements().get(i));
+                    expect(t, elemType,
+                        "array element " + i + " has type '" + t +
+                        "' but expected '" + elemType + "'", e.line());
+                }
+                yield new Type.Array(elemType);
+            }
+
+            case Expr.Index e -> {
+                Type arrayType = checkExpr(e.array());
+                if (!(arrayType instanceof Type.Array a))
+                    throw new TypeException(
+                        "cannot index into non-array type '" + arrayType + "'", e.line());
+                Type indexType = checkExpr(e.index());
+                expect(indexType, Type.Primitive.INT,
+                    "array index must be 'int', got '" + indexType + "'", e.line());
+                yield a.elementType();
+            }
         };
 
         types.put(expr, type);
@@ -345,13 +368,18 @@ public class TypeChecker {
 
     /** Convert a type name string from source code into a Type object. */
     private Type typeOf(String name) {
-        if (name == null) return Type.Primitive.INT; // fallback for unannotated symbols
+        if (name == null) return Type.Primitive.INT;
+        // handle array types like "int[]"
+        if (name.endsWith("[]")) {
+            Type inner = typeOf(name.substring(0, name.length() - 2));
+            return new Type.Array(inner);
+        }
         return switch (name) {
-            case "int" -> Type.Primitive.INT;
+            case "int"   -> Type.Primitive.INT;
             case "float" -> Type.Primitive.FLOAT;
-            case "bool" -> Type.Primitive.BOOL;
-            case "str" -> Type.Primitive.STR;
-            case "void" -> Type.Void.INSTANCE;
+            case "bool"  -> Type.Primitive.BOOL;
+            case "str"   -> Type.Primitive.STR;
+            case "void"  -> Type.Void.INSTANCE;
             default -> throw new TypeException("unknown type '" + name + "'", -1);
         };
     }

@@ -39,7 +39,12 @@ public class Parser {
                 Token pname = expect(TokenType.IDENT, "expected parameter name");
                 expect(TokenType.COLON, "expected ':'");
                 Token ptype = expect(TokenType.IDENT, "expected type");
-                params.add(new Decl.Param(pname.value(), ptype.value()));
+                String ptypeStr = ptype.value();
+                if (match(TokenType.LBRACKET)) {
+                    expect(TokenType.RBRACKET, "expected ']'");
+                    ptypeStr = ptypeStr + "[]";
+                }
+                params.add(new Decl.Param(pname.value(), ptypeStr)); 
             } while (match(TokenType.COMMA));
         }
 
@@ -48,7 +53,12 @@ public class Parser {
         // If a return type is not specified void is assumed
         String returnType = "void";
         if (match(TokenType.ARROW)) {
-            returnType = expect(TokenType.IDENT, "expected return type").value();
+            Token retTok = expect(TokenType.IDENT, "expected return type");
+            returnType = retTok.value();
+            if (match(TokenType.LBRACKET)) {
+                expect(TokenType.RBRACKET, "expected ']'");
+                returnType = returnType + "[]";
+            }
         }
 
         Stmt.Block body = parseBlock();
@@ -78,13 +88,20 @@ public class Parser {
         Token name = expect(TokenType.IDENT, "expected variable name");
         String type = null;
         if (match(TokenType.COLON)) {
-            type = expect(TokenType.IDENT, "expected type").value();
+            Token typeName = expect(TokenType.IDENT, "expected type");
+            // check for [] suffix
+            if (match(TokenType.LBRACKET)) {
+                expect(TokenType.RBRACKET, "expected ']'");
+                type = typeName.value() + "[]";
+            } else {
+                type = typeName.value();
+            }
         }
         expect(TokenType.EQ, "expected '='");
         Expr init = parseExpr();
         expect(TokenType.SEMICOLON, "expected ';'");
         return new Stmt.Let(name.value(), type, init);
-    }
+}
 
     private Stmt parseReturn() {
         int line = previous().line();
@@ -194,17 +211,29 @@ public class Parser {
     }
 
     private Expr parseCall() {
-        Expr expr = parsePrimary();
-        while (match(TokenType.LPAREN)) {
+    Expr expr = parsePrimary();
+    while (true) {
+        if (match(TokenType.LPAREN)) {
             List<Expr> args = new ArrayList<>();
             if (!check(TokenType.RPAREN)) {
-                do { args.add(parseExpr()); } while (match(TokenType.COMMA));
+                do {
+                    args.add(parseExpr());
+                }
+                while (match(TokenType.COMMA));
             }
             expect(TokenType.RPAREN, "expected ')'");
             expr = new Expr.Call(expr, args, previous().line());
+        } else if (match(TokenType.LBRACKET)) {
+            int line = previous().line();
+            Expr index = parseExpr();
+            expect(TokenType.RBRACKET, "expected ']'");
+            expr = new Expr.Index(expr, index, line);
+        } else {
+            break;
         }
-        return expr;
     }
+    return expr;
+}
 
     private Expr parsePrimary() {
         if (match(TokenType.INT))    return new Expr.Literal(Integer.parseInt(previous().value()), previous().line());
@@ -220,6 +249,18 @@ public class Parser {
             Expr inner = parseExpr();
             expect(TokenType.RPAREN, "expected ')'");
             return inner;
+        }
+        // Array literal: [1, 2, 3]
+        if (match(TokenType.LBRACKET)) {
+            int line = previous().line();
+            List<Expr> elements = new ArrayList<>();
+            if (!check(TokenType.RBRACKET)) {
+                do {
+                    elements.add(parseExpr());
+                } while (match(TokenType.COMMA));
+            }
+            expect(TokenType.RBRACKET, "expected ']'");
+            return new Expr.ArrayLiteral(elements, line);
         }
 
         throw new ParseException("expected expression", peek().line());

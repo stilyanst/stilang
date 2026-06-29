@@ -24,10 +24,11 @@ fn main() -> int {
 3. [Variables](#variables)
 4. [Functions](#functions)
 5. [Expressions](#expressions)
-6. [Control Flow](#control-flow)
-7. [Operators](#operators)
-8. [Built-in Functions](#built-in-functions)
-9. [Compiling](#compiling)
+6. [Arrays](#arrays)
+7. [Control Flow](#control-flow)
+8. [Operators](#operators)
+9. [Built-in Functions](#built-in-functions)
+10. [Compiling](#compiling)
 
 ---
 
@@ -51,7 +52,7 @@ fn main() -> int {
 }
 ```
 
-Every program must define a function named `main` returning `int` — this is the entry point where execution begins. There can only be one `main` per program. The value returned from `main` becomes the process exit code.
+Every program must define a function named `main` returning `int` - this is the entry point where execution begins. There can only be one `main` per program. The value returned from `main` becomes the process exit code.
 
 ---
 
@@ -59,15 +60,16 @@ Every program must define a function named `main` returning `int` — this is th
 
 Stilang has four primitive types and `void` for functions that return no value.
 
-| Type    | Description           | Example literals        |
-|---------|-----------------------|-------------------------|
-| `int`   | 32-bit signed integer | `0`, `42`, `-7`         |
-| `float` | 64-bit floating point | `3.14`, `-0.5`, `1.0`   |
-| `bool`  | Boolean               | `true`, `false`         |
-| `str`   | Immutable string      | `"hello"`, `"world"`    |
-| `void`  | No return value       | —                       |
+| Type      | Description           | Example literals        |
+|-----------|-----------------------|-------------------------|
+| `int`     | 32-bit signed integer | `0`, `42`, `-7`         |
+| `float`   | 64-bit floating point | `3.14`, `-0.5`, `1.0`   |
+| `bool`    | Boolean               | `true`, `false`         |
+| `str`     | Immutable string      | `"hello"`, `"world"`    |
+| `T[]`     | Array of type `T`     | `[1, 2, 3]`             |
+| `void`    | No return value       | -                       |
 
-Types are checked at compile time. There is no implicit conversion between types — `int` and `float` cannot be mixed in the same expression.
+Types are checked at compile time. There is no implicit conversion between types - `int` and `float` cannot be mixed in the same expression.
 
 ```
 // ERROR: cannot add int and float
@@ -90,7 +92,7 @@ let greeting: str = "hello";
 let active: bool = true;
 ```
 
-**Type inference** — the type annotation is optional when it can be unambiguously inferred from the initialiser:
+**Type inference** - the type annotation is optional when it can be unambiguously inferred from the initialiser:
 
 ```
 let x = 42;        // int
@@ -99,7 +101,7 @@ let z = true;      // bool
 let s = "hello";   // str
 ```
 
-**Assignment** — variables are mutable. Use `=` to reassign:
+**Assignment** - variables are mutable. Use `=` to reassign:
 
 ```
 let count: int = 0;
@@ -184,7 +186,7 @@ fn gcd(a: int, b: int) -> int {
 
 ```
 42        // int literal
-3.14      // float literal — must contain a decimal point
+3.14      // float literal - must contain a decimal point
 true      // bool literal
 false     // bool literal
 "hello"   // string literal
@@ -226,6 +228,77 @@ Use parentheses to group sub-expressions and override default precedence:
 ```
 let a: int = 2 + 3 * 4;    // 14  (multiplication binds tighter)
 let b: int = (2 + 3) * 4;  // 20
+```
+
+---
+
+## Arrays
+
+Arrays hold a fixed sequence of values of the same type. The element type is written with a `[]` suffix.
+
+### Declaration
+
+```
+let nums: int[]   = [1, 2, 3, 4, 5];
+let flags: bool[] = [true, false, true];
+let words: str[]  = ["hello", "world"];
+```
+
+All elements in a literal must have the same type. An empty literal `[]` requires an explicit type annotation so the element type can be determined.
+
+### Indexing
+
+Elements are accessed with `[index]`. Indices are zero-based and must be `int`.
+
+```
+let nums: int[] = [10, 20, 30];
+let first: int  = nums[0];   // 10
+let last: int   = nums[2];   // 30
+```
+
+The result type of `arr[i]` is the element type of `arr`. Indexing with a non-`int` expression is a compile error:
+
+```
+nums[1];       // OK
+nums[1.0];     // ERROR: array index must be 'int', got 'float'
+nums["one"];   // ERROR: array index must be 'int', got 'str'
+```
+
+There is no bounds checking at compile time. Accessing an out-of-bounds index is undefined behaviour.
+
+### Passing arrays to functions
+
+Array types are written as `T[]` in parameter and return type annotations:
+
+```
+fn sum(arr: int[], len: int) -> int {
+    let total: int = 0;
+    let i: int = 0;
+    while (i < len) {
+        total = total + arr[i];
+        i = i + 1;
+    }
+    return total;
+}
+
+fn main() -> int {
+    let nums: int[] = [10, 20, 30, 40, 50];
+    print_int(sum(nums, 5));   // 150
+    return 0;
+}
+```
+
+### Iterating
+
+Arrays do not have a built-in length property. Use a `while` loop with a manually tracked index:
+
+```
+let nums: int[] = [1, 2, 3, 4, 5];
+let i: int = 0;
+while (i < 5) {
+    print_int(nums[i]);
+    i = i + 1;
+}
 ```
 
 ---
@@ -340,9 +413,9 @@ Logical operators work on `bool` only.
 
 | Operator | Description | Short-circuits                                   |
 |----------|-------------|--------------------------------------------------|
-| `&&`     | And         | Yes — if left is `false`, right is not evaluated |
-| `\|\|`   | Or          | Yes — if left is `true`, right is not evaluated  |
-| `!`      | Not         | —                                                |
+| `&&`     | And         | Yes - if left is `false`, right is not evaluated |
+| `\|\|`   | Or          | Yes - if left is `true`, right is not evaluated  |
+| `!`      | Not         | -                                                |
 
 ```
 let a: bool = true && false;  // false
@@ -371,16 +444,14 @@ When in doubt, use parentheses. The compiler treats parenthesised expressions as
 
 ## Built-in Functions
 
-Stilang provides four built-in print functions, one per type. They are available in every program without any import.
+Stilang provides built-in print functions for all primitive types. They are available in every program without any import. Each function prints its argument followed by a newline.
 
-Each function prints its argument followed by a newline.
-
-| Function              | Argument type | Output                  |
-|-----------------------|---------------|-------------------------|
-| `print_int(x)`        | `int`         | Decimal integer         |
-| `print_float(x)`      | `float`       | Decimal with 6 digits   |
-| `print_bool(x)`       | `bool`        | `true` or `false`       |
-| `print_str(x)`        | `str`         | Raw string              |
+| Function         | Argument type | Output                |
+|------------------|---------------|-----------------------|
+| `print_int(x)`   | `int`         | Decimal integer       |
+| `print_float(x)` | `float`       | Decimal with 6 digits |
+| `print_bool(x)`  | `bool`        | `true` or `false`     |
+| `print_str(x)`   | `str`         | Raw string            |
 
 **Examples:**
 
@@ -392,25 +463,15 @@ print_float(1.0 / 3.0);  // 0.333333
 print_bool(true);         // true
 print_bool(2 > 5);        // false
 print_str("hello");       // hello
-print_str("a\tb");        // a	b
 ```
 
-Print calls can appear anywhere a statement is valid — inside functions, loops, and branches:
+The argument can be a literal, a variable, or any expression of the matching type:
 
 ```
-fn printRange(lo: int, hi: int) {
-    let i: int = lo;
-    while (i <= hi) {
-        print_int(i);
-        i = i + 1;
-    }
-}
-
-fn main() -> int {
-    printRange(1, 5);
-    // prints: 1 2 3 4 5 (each on its own line)
-    return 0;
-}
+let x: int = 21 * 2;
+print_int(x);          // 42
+print_int(x * 2);      // 84
+print_bool(x > 10);    // true
 ```
 
 Passing the wrong type is a compile error:
@@ -424,10 +485,9 @@ print_bool("yes");  // ERROR: argument 1 expected 'bool', got 'str'
 
 ## Compiling
 
-The stilang compiler is distributed as a self-contained jar. It takes a `.stil` source file, produces a `.c` file, and extracts `runtime.c` (which contains the print functions) next to it automatically.
+The stilang compiler is distributed as a self-contained jar. It takes a `.stil` source file, produces a `.c` file, and extracts `runtime.c` next to it automatically.
 
 ```bash
-# Compile stilang source to C
 java -jar stilang.jar input.stil output.c
 ```
 
@@ -446,7 +506,7 @@ gcc output.c runtime.c -o program
 
 `runtime.c` must always be included in the gcc command. It is extracted automatically and will be present in the same directory as `output.c`.
 
-If no output path is given, the generated C is printed to stdout — useful for inspecting what the compiler produces:
+If no output path is given, the generated C is printed to stdout:
 
 ```bash
 java -jar stilang.jar input.stil
@@ -454,10 +514,10 @@ java -jar stilang.jar input.stil
 
 **Exit codes:**
 
-| Code | Meaning                              |
-|------|--------------------------------------|
-| `0`  | Compilation succeeded                |
-| `1`  | Error — message printed to stderr    |
+| Code | Meaning                           |
+|------|-----------------------------------|
+| `0`  | Compilation succeeded             |
+| `1`  | Error - message printed to stderr |
 
 **Error messages** include the phase and source line:
 
@@ -468,4 +528,4 @@ Type error:   Line 7: return type mismatch: expected 'int' but got 'bool'
 Type error:   Line 3: operator '+' requires numeric operands, got 'bool'
 ```
 
-Fix errors from top to bottom — a single mistake early in the file can cause cascading errors on later lines.
+Fix errors from top to bottom - a single mistake early in the file can cause cascading errors on later lines.

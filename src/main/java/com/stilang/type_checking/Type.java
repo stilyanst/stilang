@@ -3,7 +3,7 @@ package com.stilang.type_checking;
 import java.util.List;
 
 public sealed interface Type permits
-    Type.Primitive, Type.Function, Type.Void {
+    Type.Primitive, Type.Function, Type.Void, Type.Array {
 
     record Primitive(String name) implements Type {
         public static final Primitive INT   = new Primitive("int");
@@ -17,6 +17,8 @@ public sealed interface Type permits
     record Void() implements Type {
         public static final Void INSTANCE = new Void();
     }
+
+    record Array(Type elementType) implements Type {}
 
     // Convenience
     default boolean isNumeric() {

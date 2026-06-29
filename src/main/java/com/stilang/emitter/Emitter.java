@@ -219,6 +219,21 @@ public class Emitter {
                     .collect(Collectors.joining(", "));
                 yield mangle(id.name()) + "(" + args + ")";
             }
+
+            case Expr.ArrayLiteral e -> {
+                // infer the element C type from the first element's annotation
+                Type firstType = types.get(e.elements().get(0));
+                String cElemType = firstType != null ? inferCType(e.elements().get(0)) : "int";
+                String elems = e.elements().stream()
+                    .map(this::emitExpr)
+                    .collect(Collectors.joining(", "));
+                // C compound literal: (int[]){1, 2, 3}
+                yield "(" + cElemType + "[]){" + elems + "}";
+            }
+
+            case Expr.Index e -> {
+                yield emitExpr(e.array()) + "[" + emitExpr(e.index()) + "]";
+            }
         };
     }
 
@@ -238,10 +253,15 @@ public class Emitter {
             case "bool"  -> "bool";
             case "str"   -> "char*";
             case "void"  -> "void";
-            default -> throw new EmitException("unknown type: '" + type + "'");
+            default -> {
+                // handles "int[]", "float[]", etc.
+                if (type.endsWith("[]")) {
+                    yield mapType(type.substring(0, type.length() - 2)) + "*";
+                }
+                throw new EmitException("unknown type: '" + type + "'");
+            }
         };
     }
-
     /**
      * Look up the C type for an expression using the TypeChecker's annotations.
      * Used when a let binding has no explicit type annotation.
@@ -253,9 +273,10 @@ public class Emitter {
                 "internal: no type annotation for expression — did the type checker run?");
         return switch (t) {
             case Type.Primitive p -> mapType(p.name());
-            case Type.Void      v -> "void";
-            case Type.Function  f ->
+            case Type.Void v -> "void";
+            case Type.Function f ->
                 throw new EmitException("cannot use a function type as a variable type");
+            default -> throw new EmitException("cannot infer type");
         };
     }
 
