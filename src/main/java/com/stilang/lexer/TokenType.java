@@ -5,7 +5,7 @@ public enum TokenType {
     INT, FLOAT, STRING, IDENT,
 
     // Keywords
-    FN, LET, IF, ELSE, RETURN, WHILE, TRUE, FALSE,
+    FN, LET, IF, ELSE, RETURN, WHILE, TRUE, FALSE, STRUCT,
 
     // Operators
     PLUS, MINUS, STAR, SLASH, EQ, EQEQ, BANG,

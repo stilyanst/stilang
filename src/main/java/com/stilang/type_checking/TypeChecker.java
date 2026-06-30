@@ -7,8 +7,11 @@ import com.stilang.ast.Stmt;
 
 import java.util.HashMap;
 import java.util.IdentityHashMap;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 public class TypeChecker {
 
@@ -24,6 +27,10 @@ public class TypeChecker {
 
     // Function signatures, keyed by function name.
     private final Map<String, Type.Function> functionTypes = new HashMap<>();
+
+    // Struct types, keyed by struct name. Interned: one canonical Type.Struct
+    // per declaration, reused everywhere so identity and equality coincide.
+    private final Map<String, Type.Struct> structTypes = new HashMap<>();
 
     // Types of resolved symbols (variables, parameters). 
     private final IdentityHashMap<Symbol, Type> symbolTypes = new IdentityHashMap<>();
@@ -54,6 +61,31 @@ public class TypeChecker {
         functionTypes.put("print_bool", new Type.Function(List.of(Type.Primitive.BOOL), Type.Void.INSTANCE));
         functionTypes.put("print_str", new Type.Function(List.of(Type.Primitive.STR), Type.Void.INSTANCE));
 
+        // Struct pass 1: create an empty Type.Struct for every declaration so
+        // structs may reference one another (and forward references resolve).
+        for (Decl decl : decls) {
+            if (decl instanceof Decl.Struct s) {
+                structTypes.put(s.name(), new Type.Struct(s.name(), new LinkedHashMap<>()));
+            }
+        }
+        // Struct pass 2: fill in each struct's field types now that all struct
+        // names are known. Reject duplicate field names.
+        for (Decl decl : decls) {
+            if (decl instanceof Decl.Struct s) {
+                LinkedHashMap<String, Type> fields = structTypes.get(s.name()).fields();
+                for (Decl.Field f : s.fields()) {
+                    if (fields.containsKey(f.name()))
+                        throw new TypeException(
+                            "duplicate field '" + f.name() + "' in struct '" + s.name() + "'", s.line());
+                    fields.put(f.name(), typeOf(f.type()));
+                }
+            }
+        }
+        // Reject recursive by-value nesting (would be infinite-size in C).
+        for (Type.Struct s : structTypes.values()) {
+            checkNoValueCycle(s, new LinkedHashSet<>());
+        }
+
         // First pass: register all function signatures so functions can call each other
         for (Decl decl : decls) {
             if (decl instanceof Decl.Function fn) {
@@ -79,7 +111,23 @@ public class TypeChecker {
     private void checkDecl(Decl decl) {
         switch (decl) {
             case Decl.Function fn -> checkFunction(fn);
+            case Decl.Struct s   -> {} // field types validated during registration
         }
+    }
+
+    /**
+     * Walk a struct's by-value field types looking for a cycle back to a struct
+     * already on the current path. Array-of-struct fields break the cycle (they
+     * are pointers in C), so they are not followed.
+     */
+    private void checkNoValueCycle(Type.Struct s, Set<String> path) {
+        if (!path.add(s.name()))
+            throw new TypeException(
+                "struct '" + s.name() + "' contains itself by value (infinite size)", -1);
+        for (Type ft : s.fields().values()) {
+            if (ft instanceof Type.Struct nested) checkNoValueCycle(nested, path);
+        }
+        path.remove(s.name());
     }
 
     private void checkFunction(Decl.Function fn) {
@@ -251,6 +299,58 @@ public class TypeChecker {
                     "array index must be 'int', got '" + indexType + "'", e.line());
                 yield a.elementType();
             }
+
+            case Expr.StructLiteral e -> {
+                Type.Struct st = structTypes.get(e.typeName());
+                if (st == null)
+                    throw new TypeException("unknown struct '" + e.typeName() + "'", e.line());
+                Set<String> provided = new LinkedHashSet<>();
+                for (Expr.FieldInit fi : e.fields()) {
+                    Type fieldType = st.fields().get(fi.name());
+                    if (fieldType == null)
+                        throw new TypeException(
+                            "struct '" + e.typeName() + "' has no field '" + fi.name() + "'", e.line());
+                    if (!provided.add(fi.name()))
+                        throw new TypeException(
+                            "field '" + fi.name() + "' initialised twice", e.line());
+                    Type actual = checkExpr(fi.value());
+                    expect(actual, fieldType,
+                        "field '" + fi.name() + "' expects '" + fieldType
+                        + "' but got '" + actual + "'", e.line());
+                }
+                if (provided.size() != st.fields().size())
+                    throw new TypeException(
+                        "struct '" + e.typeName() + "' literal is missing fields", e.line());
+                yield st;
+            }
+
+            case Expr.FieldAccess e -> {
+                Type t = checkExpr(e.target());
+                if (!(t instanceof Type.Struct st))
+                    throw new TypeException(
+                        "cannot access field '" + e.field() + "' on non-struct type '" + t + "'", e.line());
+                Type ft = st.fields().get(e.field());
+                if (ft == null)
+                    throw new TypeException(
+                        "struct '" + st.name() + "' has no field '" + e.field() + "'", e.line());
+                yield ft;
+            }
+
+            case Expr.FieldAssign e -> {
+                Type t = checkExpr(e.target());
+                if (!(t instanceof Type.Struct st))
+                    throw new TypeException(
+                        "cannot assign field on non-struct type '" + t + "'", e.line());
+                Type ft = st.fields().get(e.field());
+                if (ft == null)
+                    throw new TypeException(
+                        "struct '" + st.name() + "' has no field '" + e.field() + "'", e.line());
+                Type v = checkExpr(e.value());
+                expect(v, ft,
+                    "cannot assign '" + v + "' to field '" + e.field()
+                    + "' of type '" + ft + "'", e.line());
+                yield ft;
+            }
         };
 
         types.put(expr, type);
@@ -273,6 +373,9 @@ public class TypeChecker {
                 yield left; // int op int -> int,  float op float -> float
             }
             case "==", "!=" -> {
+                if (left instanceof Type.Struct || right instanceof Type.Struct)
+                    throw new TypeException(
+                        "operator '" + e.op() + "' cannot compare struct values", e.line());
                 expect(left, right,
                         "can only compare values of the same type: '"
                         + left + "' vs '" + right + "'", e.line());
@@ -380,7 +483,11 @@ public class TypeChecker {
             case "bool"  -> Type.Primitive.BOOL;
             case "str"   -> Type.Primitive.STR;
             case "void"  -> Type.Void.INSTANCE;
-            default -> throw new TypeException("unknown type '" + name + "'", -1);
+            default -> {
+                Type.Struct s = structTypes.get(name);
+                if (s != null) yield s;
+                throw new TypeException("unknown type '" + name + "'", -1);
+            }
         };
     }
 

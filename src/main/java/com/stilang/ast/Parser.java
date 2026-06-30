@@ -25,8 +25,33 @@ public class Parser {
 
 
     private Decl parseDecl() {
-        if (match(TokenType.FN)) return parseFn();
+        if (match(TokenType.FN))     return parseFn();
+        if (match(TokenType.STRUCT)) return parseStruct();
         throw new ParseException("expected declaration", peek().line());
+    }
+
+    private Decl.Struct parseStruct() {
+        Token name = expect(TokenType.IDENT, "expected struct name");
+        expect(TokenType.LBRACE, "expected '{'");
+
+        List<Decl.Field> fields = new ArrayList<>();
+        while (!check(TokenType.RBRACE) && !isAtEnd()) {
+            Token fname = expect(TokenType.IDENT, "expected field name");
+            expect(TokenType.COLON, "expected ':'");
+            Token ftype = expect(TokenType.IDENT, "expected field type");
+            String ftypeStr = ftype.value();
+            if (match(TokenType.LBRACKET)) {
+                expect(TokenType.RBRACKET, "expected ']'");
+                ftypeStr = ftypeStr + "[]";
+            }
+            expect(TokenType.SEMICOLON, "expected ';'");
+            fields.add(new Decl.Field(fname.value(), ftypeStr));
+        }
+
+        expect(TokenType.RBRACE, "expected '}'");
+        // An optional trailing ';' after the struct body is accepted.
+        match(TokenType.SEMICOLON);
+        return new Decl.Struct(name.value(), fields, name.line());
     }
 
     private Decl.Function parseFn() {
@@ -140,10 +165,12 @@ public class Parser {
     private Expr parseAssign() {
         Expr left = parseOr();
         if (match(TokenType.EQ)) {
-            if (!(left instanceof Expr.Ident id))
-                throw new ParseException("invalid assignment target", previous().line());
             Expr value = parseAssign(); // right-associative
-            return new Expr.Assign(id.name(), value, id.line());
+            if (left instanceof Expr.Ident id)
+                return new Expr.Assign(id.name(), value, id.line());
+            if (left instanceof Expr.FieldAccess fa)
+                return new Expr.FieldAssign(fa.target(), fa.field(), value, fa.line());
+            throw new ParseException("invalid assignment target", previous().line());
         }
         return left;
     }
@@ -228,6 +255,10 @@ public class Parser {
             Expr index = parseExpr();
             expect(TokenType.RBRACKET, "expected ']'");
             expr = new Expr.Index(expr, index, line);
+        } else if (match(TokenType.DOT)) {
+            int line = previous().line();
+            Token field = expect(TokenType.IDENT, "expected field name after '.'");
+            expr = new Expr.FieldAccess(expr, field.value(), line);
         } else {
             break;
         }
@@ -242,8 +273,14 @@ public class Parser {
         if (match(TokenType.TRUE))   return new Expr.Literal(true, previous().line());
         if (match(TokenType.FALSE))  return new Expr.Literal(false, previous().line());
 
-        if (match(TokenType.IDENT))
-            return new Expr.Ident(previous().value(), previous().line());
+        if (check(TokenType.IDENT)) {
+            Token id = advance();
+            // Struct literal:  Point { x = 3, y = 4 }
+            if (check(TokenType.LBRACE)) {
+                return parseStructLiteral(id);
+            }
+            return new Expr.Ident(id.value(), id.line());
+        }
 
         if (match(TokenType.LPAREN)) {
             Expr inner = parseExpr();
@@ -264,6 +301,21 @@ public class Parser {
         }
 
         throw new ParseException("expected expression", peek().line());
+    }
+
+    private Expr parseStructLiteral(Token typeName) {
+        expect(TokenType.LBRACE, "expected '{'");
+        List<Expr.FieldInit> inits = new ArrayList<>();
+        if (!check(TokenType.RBRACE)) {
+            do {
+                Token fname = expect(TokenType.IDENT, "expected field name");
+                expect(TokenType.EQ, "expected '='");
+                Expr value = parseExpr();
+                inits.add(new Expr.FieldInit(fname.value(), value));
+            } while (match(TokenType.COMMA));
+        }
+        expect(TokenType.RBRACE, "expected '}'");
+        return new Expr.StructLiteral(typeName.value(), inits, typeName.line());
     }
 
     // Helpers

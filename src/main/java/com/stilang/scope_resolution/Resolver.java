@@ -1,7 +1,9 @@
 package com.stilang.scope_resolution;
 
+import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Set;
 
 import com.stilang.ast.Decl;
 import com.stilang.ast.Expr;
@@ -12,6 +14,10 @@ public class Resolver {
     private Scope current;
 
     public final IdentityHashMap<Expr, Symbol> resolutions = new IdentityHashMap<>();
+
+    // Names of declared struct types. Structs live in their own namespace,
+    // separate from ordinary value names.
+    private final Set<String> structNames = new HashSet<>();
 
     public Resolver() {
         // Start with an empty global scope
@@ -44,6 +50,15 @@ public class Resolver {
         current.define(new Symbol("print_bool", Symbol.Kind.FUNCTION, "void", -1));
         current.define(new Symbol("print_str", Symbol.Kind.FUNCTION, "void", -1));
 
+        // First pass register all struct names so they can be referenced in any
+        // order and from any function body.
+        for (Decl decl : decls) {
+            if (decl instanceof Decl.Struct s) {
+                if (!structNames.add(s.name()))
+                    throw new ResolveException("struct '" + s.name() + "' is already defined", s.line());
+            }
+        }
+
         // First pass register all function names so they can call each other
         for (Decl decl : decls) {
             if (decl instanceof Decl.Function fn) {
@@ -59,6 +74,7 @@ public class Resolver {
     private void resolveDecl(Decl decl) {
         switch (decl) {
             case Decl.Function fn -> resolveFunction(fn);
+            case Decl.Struct s   -> {} // fields declare no value names to resolve
         }
     }
 
@@ -137,7 +153,19 @@ public class Resolver {
             case Expr.Index e -> {
                 resolveExpr(e.array());
                 resolveExpr(e.index());
-}
+            }
+            case Expr.StructLiteral e -> {
+                if (!structNames.contains(e.typeName()))
+                    throw new ResolveException("undefined struct '" + e.typeName() + "'", e.line());
+                for (Expr.FieldInit fi : e.fields()) resolveExpr(fi.value());
+            }
+            // Only the target is a value name; the field is resolved against the
+            // struct's type during type checking, not here.
+            case Expr.FieldAccess e -> resolveExpr(e.target());
+            case Expr.FieldAssign e -> {
+                resolveExpr(e.target());
+                resolveExpr(e.value());
+            }
         }
     }
 }

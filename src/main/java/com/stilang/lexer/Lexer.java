@@ -13,7 +13,8 @@ public class Lexer {
         Map.entry("return", TokenType.RETURN),
         Map.entry("while", TokenType.WHILE),
         Map.entry("true", TokenType.TRUE),
-        Map.entry("false",  TokenType.FALSE)
+        Map.entry("false",  TokenType.FALSE),
+        Map.entry("struct", TokenType.STRUCT)
     );
 
     private final String source; // Code to lex

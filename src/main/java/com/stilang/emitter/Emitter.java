@@ -4,6 +4,10 @@ import com.stilang.ast.*;
 import com.stilang.type_checking.Type;
 
 import java.util.IdentityHashMap;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.List;
 
@@ -17,6 +21,9 @@ public class Emitter {
     private final IdentityHashMap<Expr, Type> types;   // from TypeChecker
     private int                         indent    = 0;
     private int                         tempCount = 0;
+
+    // Names of declared struct types, collected at the start of emit().
+    private final Set<String> structNames = new LinkedHashSet<>();
 
     // Reserved C keywords — if a user variable matches one, we mangle it
     private static final java.util.Set<String> C_KEYWORDS = java.util.Set.of(
@@ -59,6 +66,11 @@ public class Emitter {
         writeLine("void print_str(char* x);");
         writeLine("");
 
+        // Struct typedefs — must precede any function that uses them.
+        for (Decl d : program)
+            if (d instanceof Decl.Struct s) structNames.add(s.name());
+        emitStructs(program);
+
         // Forward-declare every function so call order doesn't matter
         for (Decl d : program) writeForwardDecl(d);
         writeLine("");
@@ -85,12 +97,49 @@ public class Emitter {
     }
 
     // -------------------------------------------------------------------------
+    // Structs
+    // -------------------------------------------------------------------------
+
+    /**
+     * Emit every struct as a C typedef. By-value struct fields require the
+     * nested struct to be fully defined first, so definitions are emitted in
+     * dependency (topological) order. The type checker has already rejected
+     * cycles, so this terminates.
+     */
+    private void emitStructs(List<Decl> program) {
+        Map<String, Decl.Struct> structs = new LinkedHashMap<>();
+        for (Decl d : program)
+            if (d instanceof Decl.Struct s) structs.put(s.name(), s);
+
+        Set<String> emitted = new LinkedHashSet<>();
+        for (Decl.Struct s : structs.values()) emitStructDef(s, structs, emitted);
+        if (!structs.isEmpty()) writeLine("");
+    }
+
+    private void emitStructDef(Decl.Struct s, Map<String, Decl.Struct> structs, Set<String> emitted) {
+        if (!emitted.add(s.name())) return;
+        // Emit by-value struct dependencies first.
+        for (Decl.Field f : s.fields()) {
+            if (!f.type().endsWith("[]") && structs.containsKey(f.type()))
+                emitStructDef(structs.get(f.type()), structs, emitted);
+        }
+        writeLine("typedef struct {");
+        indent++;
+        for (Decl.Field f : s.fields())
+            writeLine(mapType(f.type()) + " " + mangle(f.name()) + ";");
+        indent--;
+        writeLine("} " + mangle(s.name()) + ";");
+        writeLine("");
+    }
+
+    // -------------------------------------------------------------------------
     // Declarations
     // -------------------------------------------------------------------------
 
     private void emitDecl(Decl decl) {
         switch (decl) {
             case Decl.Function fn -> emitFunction(fn);
+            case Decl.Struct s   -> {} // emitted up front by emitStructs
         }
     }
 
@@ -234,6 +283,19 @@ public class Emitter {
             case Expr.Index e -> {
                 yield emitExpr(e.array()) + "[" + emitExpr(e.index()) + "]";
             }
+
+            case Expr.StructLiteral e -> {
+                String inits = e.fields().stream()
+                    .map(fi -> "." + mangle(fi.name()) + " = " + emitExpr(fi.value()))
+                    .collect(Collectors.joining(", "));
+                yield "(" + mangle(e.typeName()) + "){" + inits + "}";
+            }
+
+            case Expr.FieldAccess e -> emitExpr(e.target()) + "." + mangle(e.field());
+
+            case Expr.FieldAssign e -> "("
+                + emitExpr(e.target()) + "." + mangle(e.field())
+                + " = " + emitExpr(e.value()) + ")";
         };
     }
 
@@ -254,10 +316,12 @@ public class Emitter {
             case "str"   -> "char*";
             case "void"  -> "void";
             default -> {
-                // handles "int[]", "float[]", etc.
+                // handles "int[]", "float[]", "Point[]", etc.
                 if (type.endsWith("[]")) {
                     yield mapType(type.substring(0, type.length() - 2)) + "*";
                 }
+                // user-defined struct type
+                if (structNames.contains(type)) yield mangle(type);
                 throw new EmitException("unknown type: '" + type + "'");
             }
         };
@@ -271,12 +335,18 @@ public class Emitter {
         if (t == null)
             throw new EmitException(
                 "internal: no type annotation for expression — did the type checker run?");
+        return cTypeOf(t);
+    }
+
+    /** Map a resolved Type to its C type string. */
+    private String cTypeOf(Type t) {
         return switch (t) {
             case Type.Primitive p -> mapType(p.name());
             case Type.Void v -> "void";
+            case Type.Struct st -> mangle(st.name());
+            case Type.Array a -> cTypeOf(a.elementType()) + "*";
             case Type.Function f ->
                 throw new EmitException("cannot use a function type as a variable type");
-            default -> throw new EmitException("cannot infer type");
         };
     }
 
